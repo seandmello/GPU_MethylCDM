@@ -1,0 +1,138 @@
+import argparse
+import os
+import torch
+from torch import nn
+from torchvision import transforms
+import tqdm
+
+from new_read_data import PatchRNADataset
+from RNA_cdm import RNACDM
+from unet import Unet
+from new_trainer import RNACDMTrainer
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train MethylCDM")
+    parser.add_argument("--path_to_patches", type=str, required=True,
+                        help="Path to directory containing WSI patch folders")
+    parser.add_argument("--path_to_methyl", type=str, required=True,
+                        help="Path to directory containing per-WSI .npy methylation vectors")
+    parser.add_argument("--save_dir", type=str, required=True,
+                        help="Directory to save model checkpoints")
+    parser.add_argument("--batch_size", type=int, default=8)
+    parser.add_argument("--max_batch_size", type=int, default=128,
+                        help="Max sub-batch size for gradient accumulation chunking")
+    parser.add_argument("--num_epochs", type=int, default=100)
+    parser.add_argument("--timesteps", type=int, default=1000)
+    parser.add_argument("--dim", type=int, default=256,
+                        help="Base dimension of the UNet")
+    parser.add_argument("--dim_mults", type=int, nargs="+", default=[1, 2, 3, 4],
+                        help="Dimension multipliers for each UNet level")
+    parser.add_argument("--num_resnet_blocks", type=int, default=3,
+                        help="Number of ResNet blocks per level")
+    parser.add_argument("--layer_attns", type=int, nargs="+", default=[0, 1, 1, 1],
+                        help="Self-attention per level (0=False, 1=True)")
+    parser.add_argument("--layer_cross_attns", type=int, nargs="+", default=[0, 1, 1, 1],
+                        help="Cross-attention per level (0=False, 1=True)")
+    parser.add_argument("--attn_heads", type=int, default=8,
+                        help="Number of attention heads")
+    parser.add_argument("--ff_mult", type=float, default=2.0,
+                        help="Feed-forward multiplier")
+    parser.add_argument("--memory_efficient", action="store_true", default=False,
+                        help="Use memory-efficient attention")
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--num_workers", type=int, default=4,
+                        help="DataLoader workers (only used when CUDA is available)")
+    parser.add_argument("--num_iter_save", type=int, default=500,
+                        help="Save a checkpoint every N training steps")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint to resume training from")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = parse_args()
+
+    methyl = True
+
+    training_dataset = PatchRNADataset(args.path_to_patches, args.path_to_methyl)
+    print(f"Dataset size: {len(training_dataset)} samples")
+
+    unet1 = Unet(
+        dim=args.dim,
+        dim_mults=tuple(args.dim_mults),
+        num_resnet_blocks=args.num_resnet_blocks,
+        layer_attns=tuple(bool(x) for x in args.layer_attns),
+        layer_cross_attns=tuple(bool(x) for x in args.layer_cross_attns),
+        attn_heads=args.attn_heads,
+        ff_mult=args.ff_mult,
+        memory_efficient=args.memory_efficient,
+        cond_dim=10 if methyl else 0,
+        cond_on_rna=methyl,
+        max_rna_len=10 if methyl else 0,
+    )
+
+    imagen = RNACDM(
+        unets=(unet1,),
+        image_sizes=(64,),
+        timesteps=args.timesteps,
+        cond_drop_prob=0.5,
+        condition_on_rna=methyl,
+        rna_embed_dim=10 if methyl else 0,
+    )
+
+    trainer = RNACDMTrainer(imagen, lr=args.lr)
+
+    step = 0
+    start_epoch = 0
+
+    if args.resume is not None:
+        trainer.load(args.resume)
+        step = trainer.global_step
+        print(f"Resumed from checkpoint: {args.resume}  (step {step})")
+
+    # --- Adaptive DataLoader (CPU vs GPU) ---
+    use_cuda = torch.cuda.is_available()
+    num_workers = args.num_workers if use_cuda else 0
+    dl_kwargs = dict(
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        pin_memory=use_cuda,
+        persistent_workers=(num_workers > 0),
+    )
+    train_dl = torch.utils.data.DataLoader(training_dataset, **dl_kwargs)
+
+    device_name = "cuda" if use_cuda else "cpu"
+    print(f"Device: {device_name}")
+    print(f"DataLoader: batch_size={args.batch_size}, num_workers={num_workers}, pin_memory={use_cuda}")
+    print("Starting training")
+
+    os.makedirs(args.save_dir, exist_ok=True)
+
+    for epoch in range(start_epoch, args.num_epochs):
+        for batch in tqdm.tqdm(train_dl, desc=f"Epoch {epoch+1}/{args.num_epochs}"):
+            images = batch["image"]
+            methyl_data = batch["methyl_data"] if methyl else None
+
+            loss = trainer(
+                images,
+                methyl_embeds=methyl_data,
+                unet_number=1,
+                max_batch_size=args.max_batch_size,
+            )
+            trainer.update(unet_number=1)
+            step += 1
+
+            if step % 50 == 0:
+                print(f"  epoch={epoch+1} step={step} loss={loss:.4f}")
+
+            if trainer.is_main and step % args.num_iter_save == 0:
+                ckpt_path = os.path.join(args.save_dir, f"model-step{step}.pt")
+                trainer.save(ckpt_path, step)
+                print(f"  Saved checkpoint: {ckpt_path}")
+
+    if trainer.is_main:
+        final_path = os.path.join(args.save_dir, "model-final.pt")
+        trainer.save(final_path, step)
+        print(f"Training complete. Final model saved to {final_path}")
