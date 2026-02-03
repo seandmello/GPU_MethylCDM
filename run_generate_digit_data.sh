@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=gen_digits
-#SBATCH -p cpu
+#SBATCH -p himem
 #SBATCH --output=logs/%j_gen_digits.out
 #SBATCH --error=logs/%j_gen_digits.err
 #SBATCH --cpus-per-task=1
