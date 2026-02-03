@@ -23,8 +23,8 @@ conda activate "${CONDA_ENV_NAME}"
 
 # Run the Python training script
 python newnew_main.py \
-    --path_to_patches "${DATA_ROOT}/mnist_patches" \
-    --path_to_methyl "${DATA_ROOT}/rna_data" \
+    --path_to_patches "${DATA_ROOT}/MNIST/mnist_patches" \
+    --path_to_methyl "${DATA_ROOT}/MNIST/rna_data" \
     --save_dir "${SAVE_DIR}" \
     --batch_size 8 \
     --max_batch_size 128 \

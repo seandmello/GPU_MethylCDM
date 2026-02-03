@@ -68,15 +68,20 @@ for digit in range(10):
     wsi_dir = os.path.join(patch_root, wsi_name)
     os.makedirs(wsi_dir, exist_ok=True)
 
-    # Pick random images of this digit
-    chosen = random.sample(digit_indices[digit], num_images_per_folder)
+    # Cap to available images for this digit
+    available = len(digit_indices[digit])
+    n = min(num_images_per_folder, available)
+    print(f"  {wsi_name}: using {n}/{available} images")
+
+    chosen = random.sample(digit_indices[digit], n)
     for i, idx in enumerate(chosen):
         img, label = mnist[idx]
         img_path = os.path.join(wsi_dir, f"patch_{i}.png")
         img.save(img_path)
 
-    # Methyl embedding is just the digit value repeated 10 times
-    rna_vector = np.full(10, float(digit))
+    # One-hot encoding for the digit label (length 10)
+    rna_vector = np.zeros(10, dtype=np.float32)
+    rna_vector[digit] = 1.0
     np.save(os.path.join(rna_root, f"{wsi_name}.npy"), rna_vector)
 
 # --- Create Dataset and DataLoader ---
