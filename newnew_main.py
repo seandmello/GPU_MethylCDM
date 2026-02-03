@@ -1,8 +1,10 @@
 import argparse
 import os
+import numpy as np
 import torch
 from torch import nn
 from torchvision import transforms
+from torchvision import utils as vutils
 import tqdm
 import matplotlib
 matplotlib.use("Agg")
@@ -171,6 +173,34 @@ if __name__ == "__main__":
         fig.tight_layout()
         fig.savefig(os.path.join(plot_dir, "loss_per_epoch.png"), dpi=150)
         plt.close(fig)
+
+        # Generate 5 sample patches at the end of each epoch
+        if trainer.is_main and methyl:
+            gen_dir = os.path.join(args.save_dir, "samples", f"epoch_{epoch+1}")
+            os.makedirs(gen_dir, exist_ok=True)
+
+            device = next(imagen.parameters()).device
+            rna_files = sorted([f for f in os.listdir(args.path_to_methyl) if f.endswith(".npy")])
+            if rna_files:
+                rna_vector = np.load(os.path.join(args.path_to_methyl, rna_files[0]))
+                rna_embed = torch.from_numpy(rna_vector).float().unsqueeze(0).to(device)
+                rna_batch = rna_embed.expand(5, -1)
+
+                with torch.no_grad():
+                    generated = trainer.sample(
+                        batch_size=5,
+                        rna_embeds=rna_batch,
+                        cond_scale=3.0,
+                        stop_at_unet_number=1,
+                        return_pil_images=False,
+                    )
+
+                for i in range(generated.shape[0]):
+                    vutils.save_image(generated[i], os.path.join(gen_dir, f"tile_{i}.png"))
+
+                grid = vutils.make_grid(generated, nrow=5, normalize=True)
+                vutils.save_image(grid, os.path.join(gen_dir, "grid.png"))
+                print(f"  Saved 5 sample patches to {gen_dir}")
 
     if trainer.is_main:
         final_path = os.path.join(args.save_dir, "model-final.pt")

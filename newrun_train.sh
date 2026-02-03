@@ -26,9 +26,9 @@ python newnew_main.py \
     --path_to_patches "${DATA_ROOT}/mnist_patches" \
     --path_to_methyl "${DATA_ROOT}/rna_data" \
     --save_dir "${SAVE_DIR}" \
-    --batch_size 2 \
+    --batch_size 8 \
     --max_batch_size 128 \
-    --num_epochs 20 \
+    --num_epochs 50 \
     --timesteps 1000 \
     --dim 128 \
     --lr 1e-4 \
