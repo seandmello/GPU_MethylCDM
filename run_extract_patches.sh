@@ -46,7 +46,7 @@ for COHORT in "${COHORTS[@]}"; do
         --patch_size 256 \
         --target_magnification 20 \
         --max_workers 8 \
-        --min_tissue 0.5 \
+        --min_tissue 0.9 \
         --skip_errors \
         --clear_cache
 
