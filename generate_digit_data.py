@@ -50,8 +50,9 @@ rna_root = os.path.join(data_root, "rna_data")
 os.makedirs(patch_root, exist_ok=True)
 os.makedirs(rna_root, exist_ok=True)
 
-# Download MNIST and save subsets as images
-mnist = datasets.MNIST(root=data_root, train=True, download=True)
+# Load MNIST from pre-downloaded cache (no internet required)
+# torchvision expects {root}/MNIST/raw/, so set root one level above
+mnist = datasets.MNIST(root="/cluster/projects/kumargroup/sean/Methylation_Generation", train=True, download=False)
 
 # Group all MNIST indices by their digit label
 digit_indices = {d: [] for d in range(10)}
