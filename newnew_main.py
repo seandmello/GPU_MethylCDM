@@ -4,6 +4,9 @@ import torch
 from torch import nn
 from torchvision import transforms
 import tqdm
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 from new_read_data import PatchRNADataset
 from RNA_cdm import RNACDM
@@ -110,7 +113,12 @@ if __name__ == "__main__":
 
     os.makedirs(args.save_dir, exist_ok=True)
 
+    # Loss tracking
+    step_losses = []       # (step, loss) for every logged step
+    epoch_avg_losses = []  # average loss per epoch
+
     for epoch in range(start_epoch, args.num_epochs):
+        epoch_losses = []
         for batch in tqdm.tqdm(train_dl, desc=f"Epoch {epoch+1}/{args.num_epochs}"):
             images = batch["image"]
             methyl_data = batch["methyl_data"] if methyl else None
@@ -123,16 +131,49 @@ if __name__ == "__main__":
             )
             trainer.update(unet_number=1)
             step += 1
+            epoch_losses.append(loss)
 
             if step % 50 == 0:
                 print(f"  epoch={epoch+1} step={step} loss={loss:.4f}")
+                step_losses.append((step, loss))
 
             if trainer.is_main and step % args.num_iter_save == 0:
                 ckpt_path = os.path.join(args.save_dir, f"model-step{step}.pt")
                 trainer.save(ckpt_path, step)
                 print(f"  Saved checkpoint: {ckpt_path}")
 
+        avg_loss = sum(epoch_losses) / len(epoch_losses)
+        epoch_avg_losses.append(avg_loss)
+        print(f"  Epoch {epoch+1} average loss: {avg_loss:.4f}")
+
+        # Save plots at the end of each epoch
+        plot_dir = os.path.join(args.save_dir, "plots")
+        os.makedirs(plot_dir, exist_ok=True)
+
+        # Step-level loss plot
+        if step_losses:
+            fig, ax = plt.subplots(figsize=(10, 5))
+            steps_x, losses_y = zip(*step_losses)
+            ax.plot(steps_x, losses_y, linewidth=0.8)
+            ax.set_xlabel("Step")
+            ax.set_ylabel("Loss")
+            ax.set_title("Training Loss (per step)")
+            fig.tight_layout()
+            fig.savefig(os.path.join(plot_dir, "loss_per_step.png"), dpi=150)
+            plt.close(fig)
+
+        # Epoch-level loss plot
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.plot(range(1, len(epoch_avg_losses) + 1), epoch_avg_losses, marker="o")
+        ax.set_xlabel("Epoch")
+        ax.set_ylabel("Average Loss")
+        ax.set_title("Training Loss (per epoch)")
+        fig.tight_layout()
+        fig.savefig(os.path.join(plot_dir, "loss_per_epoch.png"), dpi=150)
+        plt.close(fig)
+
     if trainer.is_main:
         final_path = os.path.join(args.save_dir, "model-final.pt")
         trainer.save(final_path, step)
         print(f"Training complete. Final model saved to {final_path}")
+        print(f"Loss plots saved to {os.path.join(args.save_dir, 'plots')}")

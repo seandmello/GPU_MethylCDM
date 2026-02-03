@@ -11,7 +11,7 @@
 
 # --- EDIT THESE PATHS ---
 CONDA_ENV_NAME="methylcdm"
-CHECKPOINT="/cluster/projects/kumargroup/sean/Methylation_Generation/models/model.pt"
+CHECKPOINT="/cluster/projects/kumargroup/sean/Methylation_Generation/models/model-step9500.pt.pt"
 RNA_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/rna_data"
 SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/generated_images"
 
