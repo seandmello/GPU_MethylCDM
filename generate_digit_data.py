@@ -43,14 +43,15 @@ class PatchRNADataset(Dataset):
         }
 
 # --- Prepare MNIST Patches and Random RNA ---
-patch_root = "mnist_patches"
-rna_root = "rna_data"
+data_root = "/cluster/projects/kumargroup/sean/Methylation_Generation/MNIST"
+patch_root = os.path.join(data_root, "mnist_patches")
+rna_root = os.path.join(data_root, "rna_data")
 
 os.makedirs(patch_root, exist_ok=True)
 os.makedirs(rna_root, exist_ok=True)
 
 # Download MNIST and save subsets as images
-mnist = datasets.MNIST(root=".", train=True, download=True)
+mnist = datasets.MNIST(root=data_root, train=True, download=True)
 
 # Group all MNIST indices by their digit label
 digit_indices = {d: [] for d in range(10)}
