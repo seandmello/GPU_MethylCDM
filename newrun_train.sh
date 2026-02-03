@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=methylcdm
 #SBATCH -p gpu
-#SBATCH --A kumargroup_gpu
+#SBATCH -A kumargroup_gpu
 #SBATCH --output=logs/%j.out
 #SBATCH --error=logs/%j.err
 #SBATCH --gres=gpu:1
