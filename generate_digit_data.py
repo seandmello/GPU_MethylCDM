@@ -60,7 +60,7 @@ for idx in range(len(mnist)):
     _, label = mnist[idx]
     digit_indices[label].append(idx)
 
-num_images_per_folder = 1300
+num_images_per_folder = 5000
 
 # One folder per digit (0-9), each folder contains only that digit
 for digit in range(10):
