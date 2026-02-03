@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import numpy as np
 import torch
@@ -207,3 +208,21 @@ if __name__ == "__main__":
         trainer.save(final_path, step)
         print(f"Training complete. Final model saved to {final_path}")
         print(f"Loss plots saved to {os.path.join(args.save_dir, 'plots')}")
+
+        # Save model config for use with run_generate.sh
+        model_config = {
+            "checkpoint": final_path,
+            "timesteps": args.timesteps,
+            "dim": args.dim,
+            "dim_mults": args.dim_mults,
+            "num_resnet_blocks": args.num_resnet_blocks,
+            "layer_attns": args.layer_attns,
+            "layer_cross_attns": args.layer_cross_attns,
+            "attn_heads": args.attn_heads,
+            "ff_mult": args.ff_mult,
+            "lr": args.lr,
+        }
+        config_path = os.path.join(args.save_dir, "model_config.json")
+        with open(config_path, "w") as f:
+            json.dump(model_config, f, indent=2)
+        print(f"Model config saved to {config_path}")
