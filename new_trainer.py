@@ -1,27 +1,36 @@
 import torch
 from torch import nn
 from torch.optim import Adam
-from contextlib import nullcontext
+from torch.nn.parallel import DistributedDataParallel as DDP
+
 
 class RNACDMTrainer(nn.Module):
     def __init__(
         self,
         imagen,
         lr=1e-4,
-        device=None
+        device=None,
+        rank=0,
+        world_size=1,
     ):
         super().__init__()
 
-        self.imagen = imagen
+        self.rank = rank
+        self.world_size = world_size
+        self.is_main = (rank == 0)
+
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.imagen.to(self.device)
+        self.imagen = imagen.to(self.device)
 
-        # assume exactly one UNet
+        # Wrap the UNet in DDP when using multiple GPUs
         self.unet = self.imagen.unets[0]
-        self.optimizer = Adam(self.unet.parameters(), lr=lr)
+        if world_size > 1:
+            self.unet = DDP(self.unet, device_ids=[rank])
+            # Replace the unet inside imagen so forward passes use the DDP wrapper
+            self.imagen.unets[0] = self.unet
 
+        self.optimizer = Adam(self.unet.parameters(), lr=lr)
         self.global_step = 0
-        self.is_main = True   # single-process assumption
 
     # --------------------------------------------------
     # forward / training step
@@ -110,8 +119,16 @@ class RNACDMTrainer(nn.Module):
     # checkpointing
     # --------------------------------------------------
     def save(self, path, step=None):
+        # Unwrap DDP module for portable checkpoints
+        model_state = self.imagen.state_dict()
+        # Strip 'unets.0.module.' prefix if saved under DDP
+        clean_state = {}
+        for k, v in model_state.items():
+            clean_key = k.replace("unets.0.module.", "unets.0.")
+            clean_state[clean_key] = v
+
         obj = {
-            "model": self.imagen.state_dict(),
+            "model": clean_state,
             "optimizer": self.optimizer.state_dict(),
             "global_step": self.global_step if step is None else step
         }
@@ -119,8 +136,7 @@ class RNACDMTrainer(nn.Module):
 
     def load(self, path):
         ckpt = torch.load(path, map_location="cpu")
-        self.imagen.load_state_dict(ckpt["model"])
+        self.imagen.load_state_dict(ckpt["model"], strict=False)
         self.optimizer.load_state_dict(ckpt["optimizer"])
         self.global_step = ckpt.get("global_step", 0)
-        # Move model to the correct device after loading
         self.imagen.to(self.device)

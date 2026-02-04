@@ -9,11 +9,12 @@
 #SBATCH --mem=16G
 #SBATCH --time=24:00:00
 
-# --- EDIT THESE PATHS ---
-CONDA_ENV_NAME="methylcdm"          # name of your Conda environment
-DATA_ROOT="/cluster/projects/kumargroup/sean/Methylation_Generation/"            # parent directory containing patches/ and rna_data/
-SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/models"      # where to save model checkpoints
-# -------------------------
+# --- EDIT THESE ---
+CONDA_ENV_NAME="methylcdm"
+DATA_ROOT="/cluster/projects/kumargroup/sean/Methylation_Generation/"
+SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/models"
+NUM_GPUS=1        # set to >1 for multi-GPU DDP (also update --gres above)
+# ------------------
 
 mkdir -p logs "${SAVE_DIR}"
 
@@ -21,8 +22,14 @@ mkdir -p logs "${SAVE_DIR}"
 source ~/miniforge3/etc/profile.d/conda.sh
 conda activate "${CONDA_ENV_NAME}"
 
-# Run the Python training script
-python newnew_main.py \
+# Single GPU: python, Multi-GPU: torchrun
+if [ "${NUM_GPUS}" -gt 1 ]; then
+    LAUNCH="torchrun --nproc_per_node=${NUM_GPUS}"
+else
+    LAUNCH="python"
+fi
+
+${LAUNCH} newnew_main.py \
     --path_to_patches "${DATA_ROOT}/patches/TCGA-BLCA" \
     --run_name "blca_uncond_dim128" \
     --save_dir "${SAVE_DIR}" \

@@ -4,7 +4,9 @@ import os
 import random
 import numpy as np
 import torch
+import torch.distributed as dist
 from torch import nn
+from torch.utils.data.distributed import DistributedSampler
 from torchvision import transforms
 from torchvision import utils as vutils
 import tqdm
@@ -65,6 +67,22 @@ if __name__ == "__main__":
     args = parse_args()
     args.save_dir = os.path.join(args.save_dir, args.run_name)
 
+    # --- DDP auto-detection (set by torchrun) ---
+    ddp = "LOCAL_RANK" in os.environ
+    if ddp:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+        dist.init_process_group("nccl")
+        torch.cuda.set_device(local_rank)
+        device = torch.device(f"cuda:{local_rank}")
+    else:
+        rank = 0
+        world_size = 1
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    is_main = (rank == 0)
+
     methyl = args.path_to_methyl is not None
 
     training_dataset = PatchRNADataset(args.path_to_patches, args.path_to_methyl)
@@ -72,7 +90,8 @@ if __name__ == "__main__":
         training_dataset = torch.utils.data.Subset(
             training_dataset, random.sample(range(len(training_dataset)), args.max_samples)
         )
-    print(f"Dataset size: {len(training_dataset)} samples")
+    if is_main:
+        print(f"Dataset size: {len(training_dataset)} samples")
 
     unet1 = Unet(
         dim=args.dim,
@@ -97,7 +116,7 @@ if __name__ == "__main__":
         rna_embed_dim=10 if methyl else 0,
     )
 
-    trainer = RNACDMTrainer(imagen, lr=args.lr)
+    trainer = RNACDMTrainer(imagen, lr=args.lr, device=device, rank=rank, world_size=world_size)
 
     step = 0
     start_epoch = 0
@@ -105,24 +124,28 @@ if __name__ == "__main__":
     if args.resume is not None:
         trainer.load(args.resume)
         step = trainer.global_step
-        print(f"Resumed from checkpoint: {args.resume}  (step {step})")
+        if is_main:
+            print(f"Resumed from checkpoint: {args.resume}  (step {step})")
 
-    # --- Adaptive DataLoader (CPU vs GPU) ---
+    # --- Adaptive DataLoader (CPU vs GPU, single vs multi-GPU) ---
     use_cuda = torch.cuda.is_available()
     num_workers = args.num_workers if use_cuda else 0
+    sampler = DistributedSampler(training_dataset, num_replicas=world_size, rank=rank) if ddp else None
     dl_kwargs = dict(
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=(sampler is None),
+        sampler=sampler,
         num_workers=num_workers,
         pin_memory=use_cuda,
         persistent_workers=(num_workers > 0),
     )
     train_dl = torch.utils.data.DataLoader(training_dataset, **dl_kwargs)
 
-    device_name = "cuda" if use_cuda else "cpu"
-    print(f"Device: {device_name}")
-    print(f"DataLoader: batch_size={args.batch_size}, num_workers={num_workers}, pin_memory={use_cuda}")
-    print("Starting training")
+    if is_main:
+        mode = f"DDP ({world_size} GPUs)" if ddp else "single GPU"
+        print(f"Device: {device}  Mode: {mode}")
+        print(f"DataLoader: batch_size={args.batch_size}, num_workers={num_workers}")
+        print("Starting training")
 
     os.makedirs(args.save_dir, exist_ok=True)
 
@@ -131,8 +154,10 @@ if __name__ == "__main__":
     epoch_avg_losses = []  # average loss per epoch
 
     for epoch in range(start_epoch, args.num_epochs):
+        if sampler is not None:
+            sampler.set_epoch(epoch)
         epoch_losses = []
-        for batch in tqdm.tqdm(train_dl, desc=f"Epoch {epoch+1}/{args.num_epochs}"):
+        for batch in tqdm.tqdm(train_dl, desc=f"Epoch {epoch+1}/{args.num_epochs}", disable=not is_main):
             images = batch["image"]
             methyl_data = batch["methyl_data"] if methyl else None
 
@@ -146,7 +171,7 @@ if __name__ == "__main__":
             step += 1
             epoch_losses.append(loss)
 
-            if step % 50 == 0:
+            if step % 50 == 0 and is_main:
                 print(f"  epoch={epoch+1} step={step} loss={loss:.4f}")
                 step_losses.append((step, loss))
 
@@ -157,9 +182,12 @@ if __name__ == "__main__":
 
         avg_loss = sum(epoch_losses) / len(epoch_losses)
         epoch_avg_losses.append(avg_loss)
-        print(f"  Epoch {epoch+1} average loss: {avg_loss:.4f}")
+        if is_main:
+            print(f"  Epoch {epoch+1} average loss: {avg_loss:.4f}")
 
-        # Save plots at the end of each epoch
+        # Save plots at the end of each epoch (rank 0 only)
+        if not is_main:
+            continue
         plot_dir = os.path.join(args.save_dir, "plots")
         os.makedirs(plot_dir, exist_ok=True)
 
@@ -236,3 +264,6 @@ if __name__ == "__main__":
         with open(config_path, "w") as f:
             json.dump(model_config, f, indent=2)
         print(f"Model config saved to {config_path}")
+
+    if ddp:
+        dist.destroy_process_group()
