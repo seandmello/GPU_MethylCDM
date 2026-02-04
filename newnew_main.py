@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import random
 import numpy as np
 import torch
 from torch import nn
@@ -53,15 +54,24 @@ def parse_args():
                         help="Save a checkpoint every N training steps")
     parser.add_argument("--resume", type=str, default=None,
                         help="Path to checkpoint to resume training from")
+    parser.add_argument("--max_samples", type=int, default=None,
+                        help="Cap dataset to N samples for faster epochs (default: use all)")
+    parser.add_argument("--run_name", type=str, required=True,
+                        help="Name for this training run (creates a subfolder under save_dir)")
     return parser.parse_args()
 
 
 if __name__ == "__main__":
     args = parse_args()
+    args.save_dir = os.path.join(args.save_dir, args.run_name)
 
     methyl = args.path_to_methyl is not None
 
     training_dataset = PatchRNADataset(args.path_to_patches, args.path_to_methyl)
+    if args.max_samples is not None and args.max_samples < len(training_dataset):
+        training_dataset = torch.utils.data.Subset(
+            training_dataset, random.sample(range(len(training_dataset)), args.max_samples)
+        )
     print(f"Dataset size: {len(training_dataset)} samples")
 
     unet1 = Unet(
