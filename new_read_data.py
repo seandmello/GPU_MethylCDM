@@ -1,8 +1,9 @@
 import os
+import random
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import numpy as np
 
 class PatchRNADataset(Dataset):
@@ -39,7 +40,12 @@ class PatchRNADataset(Dataset):
     def __getitem__(self, idx):
         patch_path, rna_path = self.samples[idx]
 
-        image = Image.open(patch_path).convert("RGB")
+        try:
+            image = Image.open(patch_path).convert("RGB")
+        except (UnidentifiedImageError, OSError):
+            # Corrupted file — return a random valid sample instead
+            return self[random.randint(0, len(self) - 1)]
+
         if self.transform:
             image = self.transform(image)
 
