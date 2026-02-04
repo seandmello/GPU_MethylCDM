@@ -6,8 +6,9 @@ from PIL import Image
 import numpy as np
 
 class PatchRNADataset(Dataset):
-    def __init__(self, patch_root, rna_root, transform=None):
+    def __init__(self, patch_root, rna_root=None, transform=None):
         self.samples = []
+        self.has_rna = rna_root is not None
         if transform is None:
             self.transform = transforms.Compose([
                 transforms.Resize((64, 64)),
@@ -18,12 +19,15 @@ class PatchRNADataset(Dataset):
 
         for wsi in os.listdir(patch_root):
             patch_dir = os.path.join(patch_root, wsi)
-            rna_path = os.path.join(rna_root, f"{wsi}.npy")
 
             if not os.path.isdir(patch_dir):
                 continue
-            if not os.path.exists(rna_path):
-                continue
+
+            rna_path = None
+            if self.has_rna:
+                rna_path = os.path.join(rna_root, f"{wsi}.npy")
+                if not os.path.exists(rna_path):
+                    continue
 
             for patch_name in os.listdir(patch_dir):
                 patch_path = os.path.join(patch_dir, patch_name)
@@ -39,9 +43,7 @@ class PatchRNADataset(Dataset):
         if self.transform:
             image = self.transform(image)
 
-        rna = torch.from_numpy(np.load(rna_path)).float()
-
-        return {
-            "image": image,
-            "methyl_data": rna
-        }
+        out = {"image": image}
+        if self.has_rna:
+            out["methyl_data"] = torch.from_numpy(np.load(rna_path)).float()
+        return out

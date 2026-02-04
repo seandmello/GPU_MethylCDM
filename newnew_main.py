@@ -21,8 +21,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train MethylCDM")
     parser.add_argument("--path_to_patches", type=str, required=True,
                         help="Path to directory containing WSI patch folders")
-    parser.add_argument("--path_to_methyl", type=str, required=True,
-                        help="Path to directory containing per-WSI .npy methylation vectors")
+    parser.add_argument("--path_to_methyl", type=str, default=None,
+                        help="Path to directory containing per-WSI .npy methylation vectors (omit for unconditional)")
     parser.add_argument("--save_dir", type=str, required=True,
                         help="Directory to save model checkpoints")
     parser.add_argument("--batch_size", type=int, default=8)
@@ -59,7 +59,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    methyl = True
+    methyl = args.path_to_methyl is not None
 
     training_dataset = PatchRNADataset(args.path_to_patches, args.path_to_methyl)
     print(f"Dataset size: {len(training_dataset)} samples")
