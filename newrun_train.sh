@@ -24,6 +24,7 @@ conda activate "${CONDA_ENV_NAME}"
 # Run the Python training script
 python newnew_main.py \
     --path_to_patches "${DATA_ROOT}/patches/TCGA-BLCA" \
+    --run_name "blca_uncond_dim128" \
     --save_dir "${SAVE_DIR}" \
     --batch_size 8 \
     --max_batch_size 128 \
