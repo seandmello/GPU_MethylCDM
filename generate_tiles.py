@@ -25,17 +25,19 @@ if __name__ == '__main__':
                         help='Random seed')
     args = parser.parse_args()
 
-    methyl = args.rna_dir is not None
-
     # Load model config from training
     with open(args.config, 'r') as f:
         cfg = json.load(f)
 
+    # Determine conditioning mode from config (falls back to --rna_dir flag)
+    methyl = cfg.get('condition_on_rna', args.rna_dir is not None)
+
     print(f"Loaded model config from {args.config}")
-    print(f"  checkpoint : {cfg['checkpoint']}")
-    print(f"  dim        : {cfg['dim']}")
-    print(f"  dim_mults  : {cfg['dim_mults']}")
-    print(f"  timesteps  : {cfg['timesteps']}")
+    print(f"  checkpoint      : {cfg['checkpoint']}")
+    print(f"  condition_on_rna: {methyl}")
+    print(f"  dim             : {cfg['dim']}")
+    print(f"  dim_mults       : {cfg['dim_mults']}")
+    print(f"  timesteps       : {cfg['timesteps']}")
 
     torch.manual_seed(args.seed)
 

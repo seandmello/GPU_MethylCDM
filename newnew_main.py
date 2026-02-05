@@ -259,6 +259,7 @@ if __name__ == "__main__":
         # Save model config for use with run_generate.sh
         model_config = {
             "checkpoint": final_path,
+            "condition_on_rna": methyl,
             "timesteps": args.timesteps,
             "dim": args.dim,
             "dim_mults": args.dim_mults,

@@ -1,5 +1,6 @@
 {
-  "checkpoint": "/Users/seandmello/Masters_2025/Kumar_Lab/Methylation_WSI_Generation/Image_only_RNA_CDM/models/gpu_test/model-step700.pt",
+  "checkpoint": "/cluster/projects/kumargroup/sean/Methylation_Generation/models/blca_uncond_dim128_8GPU/model-final.pt",
+  "condition_on_rna": false,
   "timesteps": 1000,
   "dim": 128,
   "dim_mults": [1, 2, 3, 4],
