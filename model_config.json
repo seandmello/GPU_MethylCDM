@@ -1,0 +1,12 @@
+{
+  "checkpoint": "/Users/seandmello/Masters_2025/Kumar_Lab/Methylation_WSI_Generation/Image_only_RNA_CDM/models/gpu_test/model-step700.pt",
+  "timesteps": 1000,
+  "dim": 128,
+  "dim_mults": [1, 2, 3, 4],
+  "num_resnet_blocks": 3,
+  "layer_attns": [0, 1, 1, 1],
+  "layer_cross_attns": [0, 1, 1, 1],
+  "attn_heads": 8,
+  "ff_mult": 2.0,
+  "lr": 1e-4
+}
