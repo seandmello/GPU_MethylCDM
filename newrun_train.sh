@@ -11,7 +11,7 @@
 
 # --- EDIT THESE ---
 CONDA_ENV_NAME="methylcdm"
-DATA_ROOT="/cluster/projects/kumargroup/sean/Methylation_Generation/"
+DATA_ROOT="/cluster/projects/kumargroup/sean/Methylation_Generation"
 SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/models"
 NUM_GPUS=1        # set to >1 for multi-GPU DDP (also update --gres above)
 # ------------------
@@ -30,8 +30,10 @@ else
 fi
 
 ${LAUNCH} newnew_main.py \
-    --path_to_patches "${DATA_ROOT}/patches/TCGA-BLCA" \
-    --run_name "blca_uncond_dim128_8GPU" \
+    --path_to_patches "${DATA_ROOT}/patches" \
+    --cancer_types TCGA-BLCA TCGA-BRCA TCGA-GBM TCGA-HNSC TCGA-KIRC \
+    --max_patches_per_wsi 200 \
+    --run_name "5cancer_cond_dim128" \
     --save_dir "${SAVE_DIR}" \
     --batch_size 8 \
     --max_batch_size 128 \

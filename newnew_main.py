@@ -26,6 +26,10 @@ def parse_args():
                         help="Path to directory containing WSI patch folders")
     parser.add_argument("--path_to_methyl", type=str, default=None,
                         help="Path to directory containing per-WSI .npy methylation vectors (omit for unconditional)")
+    parser.add_argument("--cancer_types", type=str, nargs="+", default=None,
+                        help="List of cancer-type folder names for cancer-type conditioning (e.g. TCGA-BLCA TCGA-BRCA)")
+    parser.add_argument("--max_patches_per_wsi", type=int, default=None,
+                        help="Max random patches to use per WSI sample (default: use all)")
     parser.add_argument("--save_dir", type=str, required=True,
                         help="Directory to save model checkpoints")
     parser.add_argument("--batch_size", type=int, default=8)
@@ -83,15 +87,38 @@ if __name__ == "__main__":
 
     is_main = (rank == 0)
 
-    methyl = args.path_to_methyl is not None
+    # --- Determine conditioning mode ---
+    if args.cancer_types is not None:
+        methyl = True
+        cond_dim = len(args.cancer_types)
+        training_dataset = PatchRNADataset(
+            args.path_to_patches,
+            cancer_types=args.cancer_types,
+            max_patches_per_wsi=args.max_patches_per_wsi,
+        )
+    elif args.path_to_methyl is not None:
+        methyl = True
+        cond_dim = 10
+        training_dataset = PatchRNADataset(
+            args.path_to_patches, args.path_to_methyl,
+            max_patches_per_wsi=args.max_patches_per_wsi,
+        )
+    else:
+        methyl = False
+        cond_dim = 0
+        training_dataset = PatchRNADataset(
+            args.path_to_patches,
+            max_patches_per_wsi=args.max_patches_per_wsi,
+        )
 
-    training_dataset = PatchRNADataset(args.path_to_patches, args.path_to_methyl)
     if args.max_samples is not None and args.max_samples < len(training_dataset):
         training_dataset = torch.utils.data.Subset(
             training_dataset, random.sample(range(len(training_dataset)), args.max_samples)
         )
     if is_main:
         print(f"Dataset size: {len(training_dataset)} samples")
+        if args.cancer_types:
+            print(f"Cancer types: {args.cancer_types} (cond_dim={cond_dim})")
 
     unet1 = Unet(
         dim=args.dim,
@@ -102,9 +129,9 @@ if __name__ == "__main__":
         attn_heads=args.attn_heads,
         ff_mult=args.ff_mult,
         memory_efficient=args.memory_efficient,
-        cond_dim=10 if methyl else 0,
+        cond_dim=cond_dim if methyl else 0,
         cond_on_rna=methyl,
-        max_rna_len=10 if methyl else 0,
+        max_rna_len=cond_dim if methyl else 0,
     )
 
     imagen = RNACDM(
@@ -113,7 +140,7 @@ if __name__ == "__main__":
         timesteps=args.timesteps,
         cond_drop_prob=0.5,
         condition_on_rna=methyl,
-        rna_embed_dim=10 if methyl else 0,
+        rna_embed_dim=cond_dim if methyl else 0,
     )
 
     trainer = RNACDMTrainer(imagen, lr=args.lr, device=device, rank=rank, world_size=world_size)
@@ -219,7 +246,32 @@ if __name__ == "__main__":
             os.makedirs(gen_dir, exist_ok=True)
 
             with torch.no_grad():
-                if methyl:
+                if args.cancer_types is not None:
+                    # Generate samples for each cancer type
+                    dev = next(imagen.parameters()).device
+                    all_generated = []
+                    labels = []
+                    for ct_idx, ct_name in enumerate(args.cancer_types):
+                        one_hot = torch.zeros(1, cond_dim, device=dev)
+                        one_hot[0, ct_idx] = 1.0
+                        rna_batch = one_hot.expand(1, -1)
+                        gen = trainer.sample(
+                            batch_size=1,
+                            rna_embeds=rna_batch,
+                            cond_scale=3.0,
+                            stop_at_unet_number=1,
+                            return_pil_images=False,
+                        )
+                        all_generated.append(gen)
+                        labels.append(ct_name)
+                        vutils.save_image(gen[0], os.path.join(gen_dir, f"{ct_name}.png"))
+
+                    generated = torch.cat(all_generated, dim=0)
+                    grid = vutils.make_grid(generated, nrow=len(args.cancer_types), normalize=True)
+                    vutils.save_image(grid, os.path.join(gen_dir, "grid.png"))
+                    print(f"  Saved {len(args.cancer_types)} cancer-type samples to {gen_dir}")
+
+                elif methyl:
                     dev = next(imagen.parameters()).device
                     rna_files = sorted([f for f in os.listdir(args.path_to_methyl) if f.endswith(".npy")])
                     if rna_files:
@@ -233,22 +285,23 @@ if __name__ == "__main__":
                             stop_at_unet_number=1,
                             return_pil_images=False,
                         )
-                    else:
-                        generated = None
+                        for i in range(generated.shape[0]):
+                            vutils.save_image(generated[i], os.path.join(gen_dir, f"tile_{i}.png"))
+                        grid = vutils.make_grid(generated, nrow=5, normalize=True)
+                        vutils.save_image(grid, os.path.join(gen_dir, "grid.png"))
+                        print(f"  Saved 5 sample patches to {gen_dir}")
+
                 else:
                     generated = trainer.sample(
                         batch_size=5,
                         stop_at_unet_number=1,
                         return_pil_images=False,
                     )
-
-            if generated is not None:
-                for i in range(generated.shape[0]):
-                    vutils.save_image(generated[i], os.path.join(gen_dir, f"tile_{i}.png"))
-
-                grid = vutils.make_grid(generated, nrow=5, normalize=True)
-                vutils.save_image(grid, os.path.join(gen_dir, "grid.png"))
-                print(f"  Saved 5 sample patches to {gen_dir}")
+                    for i in range(generated.shape[0]):
+                        vutils.save_image(generated[i], os.path.join(gen_dir, f"tile_{i}.png"))
+                    grid = vutils.make_grid(generated, nrow=5, normalize=True)
+                    vutils.save_image(grid, os.path.join(gen_dir, "grid.png"))
+                    print(f"  Saved 5 sample patches to {gen_dir}")
 
     if trainer.is_main:
         final_path = os.path.join(args.save_dir, "model-final.pt")
@@ -260,6 +313,7 @@ if __name__ == "__main__":
         model_config = {
             "checkpoint": final_path,
             "condition_on_rna": methyl,
+            "cond_dim": cond_dim,
             "timesteps": args.timesteps,
             "dim": args.dim,
             "dim_mults": args.dim_mults,
@@ -270,6 +324,8 @@ if __name__ == "__main__":
             "ff_mult": args.ff_mult,
             "lr": args.lr,
         }
+        if args.cancer_types is not None:
+            model_config["cancer_types"] = args.cancer_types
         config_path = os.path.join(args.save_dir, "model_config.json")
         with open(config_path, "w") as f:
             json.dump(model_config, f, indent=2)

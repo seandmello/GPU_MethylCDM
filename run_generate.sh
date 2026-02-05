@@ -12,10 +12,10 @@
 # --- EDIT THESE PATHS ---
 CONDA_ENV_NAME="methylcdm"
 CONFIG="/cluster/home/t140585uhn/GPU_MethylCDM/model_config.json"
-RNA_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/rna_data"
 SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/generated_images"
 
 # Generation settings
+CANCER_TYPE=""     # e.g. "TCGA-BLCA" for a specific type, or leave empty for all types
 NUM_IMAGES=5
 COND_SCALE=3.0
 SEED=42
@@ -28,10 +28,15 @@ source ~/miniforge3/etc/profile.d/conda.sh
 conda activate "${CONDA_ENV_NAME}"
 
 # Run the generation script
-python generate_tiles.py \
-    --config "${CONFIG}" \
-    --rna_dir "${RNA_DIR}" \
-    --save_dir "${SAVE_DIR}" \
-    --num_images "${NUM_IMAGES}" \
-    --cond_scale "${COND_SCALE}" \
-    --seed "${SEED}"
+CMD="python generate_tiles.py \
+    --config ${CONFIG} \
+    --save_dir ${SAVE_DIR} \
+    --num_images ${NUM_IMAGES} \
+    --cond_scale ${COND_SCALE} \
+    --seed ${SEED}"
+
+if [ -n "${CANCER_TYPE}" ]; then
+    CMD="${CMD} --cancer_type ${CANCER_TYPE}"
+fi
+
+${CMD}

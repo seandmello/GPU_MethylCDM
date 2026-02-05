@@ -1,6 +1,8 @@
 {
-  "checkpoint": "/cluster/projects/kumargroup/sean/Methylation_Generation/models/blca_uncond_dim128_8GPU/model-final.pt",
-  "condition_on_rna": false,
+  "checkpoint": "/cluster/projects/kumargroup/sean/Methylation_Generation/models/5cancer_cond_dim128/model-final.pt",
+  "condition_on_rna": true,
+  "cond_dim": 5,
+  "cancer_types": ["TCGA-BLCA", "TCGA-BRCA", "TCGA-GBM", "TCGA-HNSC", "TCGA-KIRC"],
   "timesteps": 1000,
   "dim": 128,
   "dim_mults": [1, 2, 3, 4],
