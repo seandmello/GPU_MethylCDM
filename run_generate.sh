@@ -11,7 +11,7 @@
 
 # --- EDIT THESE PATHS ---
 CONDA_ENV_NAME="methylcdm"
-CONFIG="/cluster/projects/kumargroup/sean/Methylation_Generation/models/model_config.json"
+CONFIG="/cluster/home/t140585uhn/GPU_MethylCDM/model_config.json"
 RNA_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/rna_data"
 SAVE_DIR="/cluster/projects/kumargroup/sean/Methylation_Generation/generated_images"
 
